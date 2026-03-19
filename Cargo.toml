@@ -1,0 +1,12 @@
+[package]
+name = "WASM-JNI"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "wasmjni"
+crate-type = ["cdylib"]
+
+[dependencies]
+wasmer = "7"
+jni = "0.22"
