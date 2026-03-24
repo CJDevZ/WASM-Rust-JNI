@@ -5,8 +5,16 @@ edition = "2024"
 
 [lib]
 name = "wasmjni"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-wasmer = "7"
+wasmtime = { version = "43.0.0", features = ["component-model"] }
 jni = "0.22"
+anyhow = "1.0.102"
+wasmtime-wasi = "43.0.0"
+once_cell = "1.21.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+panic = "abort"

@@ -1,0 +1,43 @@
+package example:plugin;
+
+interface logging {
+    info: func(msg: string);
+    warn: func(msg: string);
+    error: func(msg: string);
+}
+
+interface player {
+    resource player {
+        send-message: func(msg: string);
+    }
+}
+
+interface events {
+    use player.{player};
+
+    variant event {
+        tick,
+        tick-player(player),
+        message(message-event),
+    }
+
+    variant event-result {
+        allow,
+        default,
+        deny
+    }
+
+    record message-event {
+        message: option<string>
+    }
+
+    handle-event: func(event: event) -> event-result;
+}
+
+world plugin {
+    import logging;
+    export events;
+
+    export plugin-id: func() -> string;
+    export entry: func();
+}
