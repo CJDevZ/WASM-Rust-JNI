@@ -23,12 +23,12 @@ message GiveItemCommand {
 message PlayerCommand {
   oneof action {
     GiveItemCommand give_item = 1;
+    TextComponent send_message = 2;
   }
 }
 
 message PlayerChange {
   uint64 universal_id = 1;
   optional core.Vec3 position = 2;
-  repeated TextComponent message_queue = 3;
-  repeated PlayerCommand commands = 4;
+  repeated PlayerCommand commands = 3;
 }
