@@ -1,33 +1,34 @@
-use crate::bindings::protobuf::PlayerChange;
+use crate::bindings::level::LevelHandle;
 use crate::bindings::{protobuf, UNIVERSE};
 use crate::example;
 use crate::example::plugin::bindings::{BlockPos, TextComponent, Vec3};
 use crate::plugin::PluginImpl;
-use slotmap::{DefaultKey, Key};
 use wasmtime::component::Resource;
-use crate::bindings::level::LevelHandle;
+use crate::bindings::protobuf::player::{GiveItemCommand, PlayerChange, PlayerCommand};
+use crate::bindings::protobuf::player::player_command::Action;
 
 #[derive(Clone, Copy)]
 pub struct PlayerHandle(pub u64);
 
 pub struct ShadowPlayer {
-    pub uid: DefaultKey,
     level_handle: LevelHandle,
     position: Vec3,
-    pub message_queue: Vec<TextComponent>,
+    pub message_queue: Vec<protobuf::player::TextComponent>,
+    pub command_queue: Vec<PlayerCommand>,
     pub dirty: u64
 }
 
 impl ShadowPlayer {
     const POSITION_DIRTY: u64 = 1 << 0;
     const MESSAGE_QUEUE_DIRTY: u64 = 1 << 1;
+    const COMMAND_QUEUE_DIRTY: u64 = 1 << 2;
 
-    pub fn new(uid: DefaultKey, level_handle: LevelHandle) -> Self {
+    pub fn new(level_handle: LevelHandle) -> Self {
         Self {
-            uid,
             level_handle,
             position: Vec3 {x: 0f64, y: 0f64, z: 0f64},
             message_queue: Vec::new(),
+            command_queue: Vec::new(),
             dirty: 0
         }
     }
@@ -38,46 +39,22 @@ impl ShadowPlayer {
         }
     }
 
-    pub fn encode_changes(&self) -> Option<PlayerChange> {
-        if self.dirty == 0 {
-            return None
-        }
+    pub fn encode_changes(&mut self, universal_id: u64) -> Option<PlayerChange> {
+        (self.dirty != 0).then(|| {
+            let position = (self.dirty & ShadowPlayer::POSITION_DIRTY != 0).then(|| {
+                protobuf::core::Vec3 {
+                    x: self.position.x,
+                    y: self.position.y,
+                    z: self.position.z
+                }
+            });
 
-        let position = if self.dirty & ShadowPlayer::POSITION_DIRTY != 0 {
-            Some(protobuf::Vec3 {
-                x: self.position.x,
-                y: self.position.y,
-                z: self.position.z
-            })
-        } else { None };
-
-        let message_queue = self.message_queue.iter().map(|m| {
-            match m {
-                TextComponent::Plain(msg) => {
-                    protobuf::TextComponent {
-                        r#type: protobuf::text_component::Type::Plain as i32,
-                        message: msg.clone()
-                    }
-                }
-                TextComponent::MiniMessage(msg) => {
-                    protobuf::TextComponent {
-                        r#type: protobuf::text_component::Type::MiniMessage as i32,
-                        message: msg.clone()
-                    }
-                }
-                TextComponent::Json(msg) => {
-                    protobuf::TextComponent {
-                        r#type: protobuf::text_component::Type::Json as i32,
-                        message: msg.clone()
-                    }
-                }
+            PlayerChange {
+                universal_id,
+                position,
+                message_queue: std::mem::take(&mut self.message_queue),
+                commands: std::mem::take(&mut self.command_queue),
             }
-        }).collect();
-
-        Some(PlayerChange {
-            universal_id: self.uid.data().as_ffi(),
-            position,
-            message_queue
         })
     }
 }
@@ -103,23 +80,18 @@ impl example::plugin::bindings::HostPlayer for PluginImpl {
 
     fn send_message(&mut self, self_: Resource<PlayerHandle>, msg: TextComponent) -> () {
         let player_handle: &PlayerHandle = self.table.get(&self_).unwrap();
+        let (text_type, text_message) = match msg {
+            TextComponent::Plain(text) => (protobuf::player::text_component::Type::Plain, text),
+            TextComponent::MiniMessage(text) => (protobuf::player::text_component::Type::Plain, text),
+            TextComponent::Json(text) => (protobuf::player::text_component::Type::Plain, text)
+        };
         UNIVERSE.with_player_mut(player_handle.0, |player| {
-            player.message_queue.push(msg);
+            player.message_queue.push(protobuf::player::TextComponent {
+                r#type: text_type as i32,
+                message: text_message.clone()
+            });
             player.dirty |= ShadowPlayer::MESSAGE_QUEUE_DIRTY;
         });
-        // let vm = get_vm();
-        // vm.attach_current_thread(|env| {
-        //     let java_msg = env.new_string(msg)?;
-        //
-        //     env.call_method(
-        //         &mut player,
-        //         jni_str!("wasm$send_message"),
-        //         jni_sig!("(Ljava/lang/String;)V"),
-        //         &[JValue::from(&java_msg)],
-        //     )?;
-        //
-        //     Ok::<(), Error>(())
-        // }).ok();
     }
 
     fn teleport(&mut self, self_: Resource<PlayerHandle>, x: f64, y: f64, z: f64) -> () {
@@ -127,6 +99,20 @@ impl example::plugin::bindings::HostPlayer for PluginImpl {
             UNIVERSE.with_player_mut(player_handle.0, |player| {
                 player.position = Vec3 { x, y, z };
                 player.dirty |= ShadowPlayer::POSITION_DIRTY;
+            });
+        }
+    }
+
+    fn give_item(&mut self, self_: Resource<PlayerHandle>, item: String, count: i32) -> () {
+        if let Ok(player_handle) = self.table.get_mut(&self_) {
+            UNIVERSE.with_player_mut(player_handle.0, |player| {
+                player.command_queue.push(PlayerCommand {
+                    action: Some(Action::GiveItem(GiveItemCommand {
+                        item,
+                        count
+                    }))
+                });
+                player.dirty |= ShadowPlayer::COMMAND_QUEUE_DIRTY;
             });
         }
     }

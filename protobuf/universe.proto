@@ -1,0 +1,21 @@
+syntax = "proto3";
+option java_multiple_files = true;
+
+package de.cjdev.wasm.bindings.protobuf;
+import "core.proto";
+import "player.proto";
+
+message BlockUpdate {
+  core.BlockPos pos = 1;
+  string block = 2;
+}
+
+message LevelChange {
+  uint64 universal_id = 1;
+  repeated BlockUpdate block_updates = 2;
+}
+
+message UniverseChanges {
+  repeated player.PlayerChange player_changes = 1;
+  repeated LevelChange level_changes = 2;
+}

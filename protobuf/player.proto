@@ -1,0 +1,34 @@
+syntax = "proto3";
+option java_multiple_files = true;
+
+package de.cjdev.wasm.bindings.protobuf.player;
+import "core.proto";
+
+message TextComponent {
+  enum Type {
+    PLAIN = 0;
+    MINI_MESSAGE = 1;
+    JSON = 2;
+  }
+
+  Type type = 1;
+  string message = 2;
+}
+
+message GiveItemCommand {
+  string item = 1;
+  int32 count = 2;
+}
+
+message PlayerCommand {
+  oneof action {
+    GiveItemCommand give_item = 1;
+  }
+}
+
+message PlayerChange {
+  uint64 universal_id = 1;
+  optional core.Vec3 position = 2;
+  repeated TextComponent message_queue = 3;
+  repeated PlayerCommand commands = 4;
+}
