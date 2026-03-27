@@ -135,7 +135,6 @@ pub extern "system" fn Java_de_cjdev_wasm_Universe_fetch_1changes<'caller>(
     let player_changes = UNIVERSE.with_players_mut(|uid, player| {
         if let Some(changes) = player.encode_changes(uid) {
             player.dirty = 0;
-            player.message_queue.clear();
             return Some(changes);
         }
         None

@@ -13,21 +13,18 @@ pub struct PlayerHandle(pub u64);
 pub struct ShadowPlayer {
     level_handle: LevelHandle,
     position: Vec3,
-    pub message_queue: Vec<protobuf::player::TextComponent>,
     pub command_queue: Vec<PlayerCommand>,
     pub dirty: u64
 }
 
 impl ShadowPlayer {
     const POSITION_DIRTY: u64 = 1 << 0;
-    const MESSAGE_QUEUE_DIRTY: u64 = 1 << 1;
-    const COMMAND_QUEUE_DIRTY: u64 = 1 << 2;
+    const COMMAND_QUEUE_DIRTY: u64 = 1 << 1;
 
     pub fn new(level_handle: LevelHandle) -> Self {
         Self {
             level_handle,
             position: Vec3 {x: 0f64, y: 0f64, z: 0f64},
-            message_queue: Vec::new(),
             command_queue: Vec::new(),
             dirty: 0
         }
@@ -52,7 +49,6 @@ impl ShadowPlayer {
             PlayerChange {
                 universal_id,
                 position,
-                message_queue: std::mem::take(&mut self.message_queue),
                 commands: std::mem::take(&mut self.command_queue),
             }
         })
@@ -85,12 +81,15 @@ impl example::plugin::bindings::HostPlayer for PluginImpl {
             TextComponent::MiniMessage(text) => (protobuf::player::text_component::Type::Plain, text),
             TextComponent::Json(text) => (protobuf::player::text_component::Type::Plain, text)
         };
+        let text = protobuf::player::TextComponent {
+            r#type: text_type as i32,
+            message: text_message.clone()
+        };
         UNIVERSE.with_player_mut(player_handle.0, |player| {
-            player.message_queue.push(protobuf::player::TextComponent {
-                r#type: text_type as i32,
-                message: text_message.clone()
+            player.command_queue.push(PlayerCommand {
+                action: Some(Action::SendMessage(text))
             });
-            player.dirty |= ShadowPlayer::MESSAGE_QUEUE_DIRTY;
+            player.dirty |= ShadowPlayer::COMMAND_QUEUE_DIRTY;
         });
     }
 
