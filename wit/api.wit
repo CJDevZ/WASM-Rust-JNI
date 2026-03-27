@@ -6,14 +6,39 @@ interface logging {
     error: func(msg: string);
 }
 
-interface player {
+interface bindings {
+    record vec3 {
+        x: f64,
+        y: f64,
+        z: f64
+    }
+
+    record block-pos {
+        x: s32,
+        y: s32,
+        z: s32
+    }
+
     resource player {
-        send-message: func(msg: string);
+        get-level: func() -> level;
+        get-block-pos: func() -> block-pos;
+        send-message: func(msg: text-component);
+        teleport: func(x: f64, y: f64, z: f64);
+    }
+
+    resource level {
+        set-block: func(position: block-pos, block: string);
+    }
+
+    variant text-component {
+        plain(string),
+        mini-message(string),
+        json(string)
     }
 }
 
 interface events {
-    use player.{player};
+    use bindings.{player};
 
     variant event {
         tick,
