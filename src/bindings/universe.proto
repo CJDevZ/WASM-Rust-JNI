@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package de.cjdev.wasm.bindings.protobuf;
+
+message BlockPos {
+  int32 x = 1;
+  int32 y = 2;
+  int32 z = 3;
+}
+
+message Vec3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message TextComponent {
+  enum Type {
+    PLAIN = 0;
+    MINI_MESSAGE = 1;
+    JSON = 2;
+  }
+
+  Type type = 1;
+  string message = 2;
+}
+
+message PlayerChange {
+  uint64 universal_id = 1;
+  optional Vec3 position = 2;
+  repeated TextComponent message_queue = 3;
+}
+
+message LevelChange {
+  message BlockUpdate {
+    BlockPos pos = 1;
+    string block = 2;
+  }
+
+  uint64 universal_id = 1;
+  repeated BlockUpdate block_updates = 2;
+}
+
+message UniverseChanges {
+  repeated PlayerChange player_changes = 1;
+  repeated LevelChange level_changes = 2;
+}

@@ -1,9 +1,10 @@
-use jni::EnvUnowned;
-use jni::errors::Error;
-use jni::objects::{JClass, JObjectArray, JString};
+use crate::bindings::player::PlayerHandle;
+use crate::exports::example::plugin::events::Event;
 use crate::{get_logger, PLUGINS};
-use crate::bindings::player::PlayerImpl;
-use crate::exports::example::plugin::events::{Event, MessageEvent};
+use jni::errors::Error;
+use jni::objects::{JClass, JLongArray, JString};
+use jni::sys::jlong;
+use jni::EnvUnowned;
 
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
@@ -11,11 +12,10 @@ pub extern "system" fn Java_de_cjdev_wasm_Wasm_dispatch_1event<'caller>(
     mut _unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>,
     j_event: JString<'caller>,
-    j_args: JObjectArray<'caller>,
+    j_args: JLongArray<'caller>,
 ) {
     let event_name = j_event.to_string();
     _unowned_env.with_env(|env| -> Result<(), Error> {
-
         let logger = get_logger();
         if let Ok(mut plugins) = PLUGINS.lock() {
             let event_name_str: &str = event_name.as_str();
@@ -27,17 +27,10 @@ pub extern "system" fn Java_de_cjdev_wasm_Wasm_dispatch_1event<'caller>(
                         Event::Tick
                     },
                     "TickPlayer" => {
-                        let obj_ref = j_args.get_element(env, 0).unwrap();
-                        let global_ref = env.new_global_ref(obj_ref).unwrap();
-                        let player = PlayerImpl(global_ref);
+                        let mut uid_buf: [jlong; 1] = [0];
+                        j_args.get_region(env, 0, &mut uid_buf).unwrap();
+                        let player = PlayerHandle(uid_buf[0] as u64);
                         Event::TickPlayer(state.table.push(player).unwrap())
-                    },
-                    "Message" => unsafe {
-                        let obj_ref = j_args.get_element(env, 0).unwrap();
-                        let message = JString::from_raw(env, *obj_ref);
-                        Event::Message(MessageEvent {
-                            message: Some(message.to_string()),
-                        })
                     },
                     &_ => {
                         return Err(Error::ParseFailed(event_name));

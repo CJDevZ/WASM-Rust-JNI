@@ -69,13 +69,14 @@ pub extern "system" fn Java_de_cjdev_wasm_Wasm_load<'caller>(
     config.wasm_component_model(true);
     config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
     config.wasm_threads(true);
+    config.consume_fuel(true);
     let engine = Engine::new(&config).unwrap();
 
     let logger = get_logger();
 
     let mut linker: Linker<_> = Linker::new(&engine);
     crate::example::plugin::logging::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).unwrap();
-    crate::example::plugin::player::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).unwrap();
+    crate::example::plugin::bindings::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).unwrap();
     if let Err(err) = add_to_linker_sync(&mut linker) {
         logger.error(format!("Failed to add wasi to linker: {:#?}", err));
         return;
@@ -136,6 +137,7 @@ pub fn load_wasm<'caller>(
     instance: &Plugin
 ) -> Result<String, anyhow::Error> {
 
+    store.set_fuel(1_000_000u64)?;
     let plugin_id = instance.call_plugin_id(&mut store)?;
 
     store.data_mut().logger = Some(LoggerImpl::new(&plugin_id));

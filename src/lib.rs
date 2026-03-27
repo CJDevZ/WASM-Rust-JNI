@@ -1,10 +1,10 @@
 mod event;
 mod plugin;
 mod bindings;
+mod universe;
 
 use crate::bindings::logger::LoggerImpl;
 use crate::plugin::PluginInstance;
-use jni::errors::Error;
 use jni::sys::jint;
 use jni::JavaVM;
 use once_cell::sync::Lazy;
@@ -15,7 +15,8 @@ bindgen!({
     path: "wit/api.wit",
     world: "plugin",
     with: {
-        "example:plugin/player.player": bindings::player::PlayerImpl
+        "example:plugin/bindings.player": bindings::player::PlayerHandle,
+        "example:plugin/bindings.level": bindings::level::LevelHandle
     }
 });
 
@@ -36,11 +37,8 @@ fn get_logger() -> &'static LoggerImpl {
 #[unsafe(no_mangle)]
 pub unsafe extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::ffi::c_void) -> jint {
     JVM.set(vm).expect("JVM already initialized");
-    get_vm().attach_current_thread(|_env| {
-        let logger = LoggerImpl::new("Wasm Rust".to_string());
-        LOGGER.set(logger).expect("LOGGER already initialized");
-        Ok::<bool, Error>(true)
-    }).ok();
+    let logger = LoggerImpl::new("Wasm Rust".to_string());
+    LOGGER.set(logger).expect("LOGGER already initialized");
     jni::sys::JNI_VERSION_1_8
 }
 
