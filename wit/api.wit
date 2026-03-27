@@ -24,6 +24,7 @@ interface bindings {
         get-block-pos: func() -> block-pos;
         send-message: func(msg: text-component);
         teleport: func(x: f64, y: f64, z: f64);
+        give-item: func(item: string, count: s32);
     }
 
     resource level {

@@ -37,15 +37,15 @@ impl Universe {
         Some(f(player))
     }
 
-    pub fn with_players<R>(&self, f: impl Fn(&ShadowPlayer) -> R) -> Vec<R> {
-        self.players.read().unwrap().iter().map(|(_, player)| {
-            f(player)
+    pub fn with_players<R>(&self, f: impl Fn(u64, &ShadowPlayer) -> R) -> Vec<R> {
+        self.players.read().unwrap().iter().map(|(uid, player)| {
+            f(uid.data().as_ffi(), player)
         }).collect()
     }
 
-    pub fn with_players_mut<R>(&self, f: impl Fn(&mut ShadowPlayer) -> Option<R>) -> Vec<R> {
-        self.players.write().unwrap().iter_mut().filter_map(|(_, player)| {
-            f(player)
+    pub fn with_players_mut<R>(&self, f: impl Fn(u64, &mut ShadowPlayer) -> Option<R>) -> Vec<R> {
+        self.players.write().unwrap().iter_mut().filter_map(|(uid, player)| {
+            f(uid.data().as_ffi(), player)
         }).collect()
     }
 
@@ -56,14 +56,14 @@ impl Universe {
         Some(f(level))
     }
 
-    pub fn with_levels_mut<R>(&self, f: impl Fn(&mut ShadowLevel) -> Option<R>) -> Vec<R> {
-        self.levels.write().unwrap().iter_mut().filter_map(|(_, level)| {
-            f(level)
+    pub fn with_levels_mut<R>(&self, f: impl Fn(u64, &mut ShadowLevel) -> Option<R>) -> Vec<R> {
+        self.levels.write().unwrap().iter_mut().filter_map(|(uid, level)| {
+            f(uid.data().as_ffi(), level)
         }).collect()
     }
 
     pub fn add_player(&self, level_handle: LevelHandle) -> DefaultKey {
-        self.players.write().unwrap().insert_with_key(|key| ShadowPlayer::new(key, level_handle))
+        self.players.write().unwrap().insert(ShadowPlayer::new(level_handle))
     }
 
     pub fn remove_player(&self, player: DefaultKey) {
@@ -73,7 +73,7 @@ impl Universe {
     }
 
     pub fn add_level(&self) -> DefaultKey {
-        self.levels.write().unwrap().insert_with_key(|key| ShadowLevel::new(key))
+        self.levels.write().unwrap().insert(ShadowLevel::new())
     }
 
     pub fn remove_level(&self, level: DefaultKey) {
@@ -132,8 +132,8 @@ pub extern "system" fn Java_de_cjdev_wasm_Universe_fetch_1changes<'caller>(
 ) -> JByteArray<'caller> {
     let mut buf: Vec<u8> = Vec::new();
 
-    let player_changes = UNIVERSE.with_players_mut(|player| {
-        if let Some(changes) = player.encode_changes() {
+    let player_changes = UNIVERSE.with_players_mut(|uid, player| {
+        if let Some(changes) = player.encode_changes(uid) {
             player.dirty = 0;
             player.message_queue.clear();
             return Some(changes);
@@ -141,8 +141,8 @@ pub extern "system" fn Java_de_cjdev_wasm_Universe_fetch_1changes<'caller>(
         None
     });
 
-    let level_changes = UNIVERSE.with_levels_mut(|level| {
-        if let Some(changes) = level.encode_changes() {
+    let level_changes = UNIVERSE.with_levels_mut(|uid, level| {
+        if let Some(changes) = level.encode_changes(uid) {
             level.dirty = 0;
             level.block_update_queue.clear();
             return Some(changes);
