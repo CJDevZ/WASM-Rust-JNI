@@ -22,7 +22,7 @@ interface bindings {
     resource player {
         get-level: func() -> level;
         get-block-pos: func() -> block-pos;
-        send-message: func(msg: text-component);
+        send-message: func(msg: text-component, action-bar: bool);
         teleport: func(x: f64, y: f64, z: f64);
         give-item: func(item: string, count: s32);
     }

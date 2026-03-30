@@ -9,13 +9,13 @@ use jni::EnvUnowned;
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_de_cjdev_wasm_Wasm_dispatch_1event<'caller>(
-    mut _unowned_env: EnvUnowned<'caller>,
+    mut unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>,
     j_event: JString<'caller>,
     j_args: JLongArray<'caller>,
 ) {
     let event_name = j_event.to_string();
-    _unowned_env.with_env(|env| -> Result<(), Error> {
+    unowned_env.with_env(|env| -> Result<(), Error> {
         let logger = get_logger();
         if let Ok(mut plugins) = PLUGINS.lock() {
             let event_name_str: &str = event_name.as_str();

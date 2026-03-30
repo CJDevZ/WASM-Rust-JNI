@@ -15,6 +15,11 @@ message TextComponent {
   string message = 2;
 }
 
+message SendMessageCommand {
+  TextComponent text = 1;
+  bool action_bar = 2;
+}
+
 message GiveItemCommand {
   string item = 1;
   int32 count = 2;
@@ -23,7 +28,7 @@ message GiveItemCommand {
 message PlayerCommand {
   oneof action {
     GiveItemCommand give_item = 1;
-    TextComponent send_message = 2;
+    SendMessageCommand send_message = 2;
   }
 }
 

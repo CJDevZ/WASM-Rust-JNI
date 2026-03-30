@@ -9,6 +9,7 @@ use prost::Message;
 use slotmap::{DefaultKey, Key, KeyData, SlotMap};
 use std::sync::RwLock;
 use crate::bindings::level::{LevelHandle, ShadowLevel};
+use crate::PLUGINS;
 
 pub struct Universe {
     players: RwLock<SlotMap<DefaultKey, ShadowPlayer>>,
@@ -106,11 +107,15 @@ pub extern "system" fn Java_de_cjdev_wasm_Universe_add_1level<'caller>(
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_de_cjdev_wasm_Universe_push_1changes<'caller>(
-    mut _unowned_env: EnvUnowned<'caller>,
+    mut unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>,
     message: JByteArray<'caller>
 ) {
-    _unowned_env.with_env(|env| {
+    let mut plugins = PLUGINS.lock().unwrap();
+    for plugin in plugins.iter_mut() {
+        plugin.store.set_fuel(unsafe{crate::bindings::FUEL_CAP}).unwrap();
+    }
+    unowned_env.with_env(|env| {
         let buf: Vec<u8> = env.convert_byte_array(message)?;
         let changes: UniverseChanges = UniverseChanges::decode(&*buf).unwrap();
 
@@ -127,7 +132,7 @@ pub extern "system" fn Java_de_cjdev_wasm_Universe_push_1changes<'caller>(
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_de_cjdev_wasm_Universe_fetch_1changes<'caller>(
-    mut _unowned_env: EnvUnowned<'caller>,
+    mut unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>
 ) -> JByteArray<'caller> {
     let mut buf: Vec<u8> = Vec::new();
@@ -155,7 +160,7 @@ pub extern "system" fn Java_de_cjdev_wasm_Universe_fetch_1changes<'caller>(
     };
     changes.encode(&mut buf).expect("Failed encoding UniverseChanges");
 
-    _unowned_env.with_env(|env| {
+    unowned_env.with_env(|env| {
         env.byte_array_from_slice(&buf)
     }).resolve::<ThrowRuntimeExAndDefault>()
 }
