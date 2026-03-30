@@ -1,11 +1,11 @@
 use crate::bindings::level::LevelHandle;
+use crate::bindings::protobuf::player::player_command::Action;
+use crate::bindings::protobuf::player::{GiveItemCommand, PlayerChange, PlayerCommand, SendMessageCommand};
 use crate::bindings::{protobuf, UNIVERSE};
 use crate::example;
 use crate::example::plugin::bindings::{BlockPos, TextComponent, Vec3};
 use crate::plugin::PluginImpl;
 use wasmtime::component::Resource;
-use crate::bindings::protobuf::player::{GiveItemCommand, PlayerChange, PlayerCommand};
-use crate::bindings::protobuf::player::player_command::Action;
 
 #[derive(Clone, Copy)]
 pub struct PlayerHandle(pub u64);
@@ -14,7 +14,7 @@ pub struct ShadowPlayer {
     level_handle: LevelHandle,
     position: Vec3,
     pub command_queue: Vec<PlayerCommand>,
-    pub dirty: u64
+    pub dirty: u64,
 }
 
 impl ShadowPlayer {
@@ -26,7 +26,7 @@ impl ShadowPlayer {
             level_handle,
             position: Vec3 {x: 0f64, y: 0f64, z: 0f64},
             command_queue: Vec::new(),
-            dirty: 0
+            dirty: 0,
         }
     }
 
@@ -74,7 +74,7 @@ impl example::plugin::bindings::HostPlayer for PluginImpl {
         }).unwrap()
     }
 
-    fn send_message(&mut self, self_: Resource<PlayerHandle>, msg: TextComponent) -> () {
+    fn send_message(&mut self, self_: Resource<PlayerHandle>, msg: TextComponent, action_bar: bool) -> () {
         let player_handle: &PlayerHandle = self.table.get(&self_).unwrap();
         let (text_type, text_message) = match msg {
             TextComponent::Plain(text) => (protobuf::player::text_component::Type::Plain, text),
@@ -87,7 +87,10 @@ impl example::plugin::bindings::HostPlayer for PluginImpl {
         };
         UNIVERSE.with_player_mut(player_handle.0, |player| {
             player.command_queue.push(PlayerCommand {
-                action: Some(Action::SendMessage(text))
+                action: Some(Action::SendMessage(SendMessageCommand {
+                    text: Some(text),
+                    action_bar
+                }))
             });
             player.dirty |= ShadowPlayer::COMMAND_QUEUE_DIRTY;
         });

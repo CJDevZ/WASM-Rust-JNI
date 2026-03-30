@@ -1,0 +1,13 @@
+syntax = "proto3";
+option java_multiple_files = true;
+
+package de.cjdev.wasm.bindings.protobuf.plugin;
+
+message Plugin {
+  string id = 1;
+  optional string path = 2;
+}
+
+message PluginRegistration {
+  repeated Plugin plugins = 1;
+}

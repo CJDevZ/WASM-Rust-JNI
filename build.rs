@@ -1,7 +1,12 @@
 fn main() {
     prost_build::Config::new()
         .compile_protos(
-            &["protobuf/core.proto", "protobuf/player.proto", "protobuf/universe.proto"],
+            &[
+                "protobuf/core.proto",
+                "protobuf/player.proto",
+                "protobuf/universe.proto",
+                "protobuf/plugin.proto"
+            ],
             &["protobuf"]
         ).expect("Failed to compile protos");
 
