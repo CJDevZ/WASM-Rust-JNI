@@ -1,13 +1,13 @@
 syntax = "proto3";
 option java_multiple_files = true;
 
-package de.cjdev.wasm.bindings.protobuf;
+package de.cjdev.wasm.bindings.protobuf.core;
 import "core.proto";
 import "player.proto";
 
 message BlockUpdate {
-  core.BlockPos pos = 1;
-  string block = 2;
+  uint64 position = 1;
+  int32 block = 2;
 }
 
 message LevelChange {

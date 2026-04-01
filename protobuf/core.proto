@@ -3,12 +3,6 @@ option java_multiple_files = true;
 
 package de.cjdev.wasm.bindings.protobuf.core;
 
-message BlockPos {
-  int32 x = 1;
-  int32 y = 2;
-  int32 z = 3;
-}
-
 message Vec3 {
   double x = 1;
   double y = 2;

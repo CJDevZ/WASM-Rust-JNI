@@ -1,15 +1,29 @@
-use crate::bindings::protobuf::{BlockUpdate, LevelChange};
-use crate::bindings::UNIVERSE;
-use crate::example::plugin::bindings::{BlockPos, HostLevel};
+use crate::bindings::protobuf::core::{BlockUpdate, LevelChange};
+use crate::bindings::{Syncable, UNIVERSE};
+use crate::example::plugin::level::BlockPos;
 use crate::plugin::PluginImpl;
-use wasmtime::component::Resource;
-
-#[derive(Clone, Copy)]
-pub struct LevelHandle(pub u64);
 
 pub struct ShadowLevel {
     pub block_update_queue: Vec<BlockUpdate>,
     pub dirty: u64
+}
+
+impl Syncable for ShadowLevel {
+    type Change = LevelChange;
+
+    fn encode_changes(&mut self, universal_id: u64) -> Option<LevelChange> {
+        (self.dirty != 0).then(|| {
+            self.dirty = 0;
+            LevelChange {
+                universal_id,
+                block_updates: std::mem::take(&mut self.block_update_queue)
+            }
+        })
+    }
+
+    fn decode_changes(&mut self, change: Self::Change) {
+        todo!()
+    }
 }
 
 impl ShadowLevel {
@@ -21,35 +35,19 @@ impl ShadowLevel {
             dirty: 0
         }
     }
-
-    pub fn encode_changes(&mut self, universal_id: u64) -> Option<LevelChange> {
-        (self.dirty != 0).then(|| {
-            LevelChange {
-                universal_id,
-                block_updates: std::mem::take(&mut self.block_update_queue)
-            }
-        })
-    }
 }
 
-impl HostLevel for PluginImpl {
-    fn set_block(&mut self, self_: Resource<LevelHandle>, position: BlockPos, block: String) -> () {
-        let level_handle: &LevelHandle = self.table.get(&self_).unwrap();
-        UNIVERSE.with_level_mut(level_handle.0, |level| {
+impl crate::example::plugin::level::Host for PluginImpl {
+    fn set_block(&mut self, level: crate::example::plugin::level::LevelHandle, position: BlockPos, block: i32) -> () {
+        if block < 0 {
+            return;
+        }
+        UNIVERSE.levels.with_mut(level, |level| {
             level.block_update_queue.push(BlockUpdate {
-                pos: Some(crate::bindings::protobuf::core::BlockPos {
-                    x: position.x,
-                    y: position.y,
-                    z: position.z
-                }),
+                position,
                 block,
             });
             level.dirty |= ShadowLevel::BLOCK_UPDATE_DIRTY
         });
-    }
-
-    fn drop(&mut self, rep: Resource<LevelHandle>) -> wasmtime::Result<()> {
-        self.table.delete(rep)?;
-        Ok(())
     }
 }

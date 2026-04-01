@@ -1,17 +1,12 @@
 syntax = "proto3";
 option java_multiple_files = true;
 
-package de.cjdev.wasm.bindings.protobuf.player;
+package de.cjdev.wasm.bindings.protobuf.core.player;
 import "core.proto";
+import "google/protobuf/any.proto";
 
 message TextComponent {
-  enum Type {
-    PLAIN = 0;
-    MINI_MESSAGE = 1;
-    JSON = 2;
-  }
-
-  Type type = 1;
+  int32 message_type = 1;
   string message = 2;
 }
 

@@ -6,6 +6,25 @@ interface logging {
     error: func(msg: string);
 }
 
+interface level {
+    type level-handle = u64;
+    type block-pos = u64;
+
+    set-block: func(level: level-handle, position: block-pos, block: s32);
+}
+
+interface player {
+    use bindings.{text-type};
+    use level.{level-handle, block-pos};
+    type player-handle = u64;
+
+    get-level: func(player: player-handle) -> level-handle;
+    get-block-pos: func(player: player-handle) -> block-pos;
+    send-message: func(player: player-handle, message-type: text-type, message: string, action-bar: bool);
+    teleport: func(player: player-handle, x: f64, y: f64, z: f64);
+    give-item: func(player: player-handle, item: string, count: s32);
+}
+
 interface bindings {
     record vec3 {
         x: f64,
@@ -13,56 +32,28 @@ interface bindings {
         z: f64
     }
 
-    record block-pos {
-        x: s32,
-        y: s32,
-        z: s32
-    }
-
-    resource player {
-        get-level: func() -> level;
-        get-block-pos: func() -> block-pos;
-        send-message: func(msg: text-component, action-bar: bool);
-        teleport: func(x: f64, y: f64, z: f64);
-        give-item: func(item: string, count: s32);
-    }
-
-    resource level {
-        set-block: func(position: block-pos, block: string);
-    }
-
-    variant text-component {
-        plain(string),
-        mini-message(string),
-        json(string)
-    }
+    type text-type = s32;
 }
 
 interface events {
-    use bindings.{player};
+    use player.{player-handle};
 
-    variant event {
-        tick,
-        tick-player(player),
-        message(message-event),
-    }
+    type event-type = u32;
+    type event-result = s32;
 
-    variant event-result {
-        allow,
-        default,
-        deny
-    }
+    handle-event: func(event-type: event-type, args: list<u64>) -> event-result;
+}
 
-    record message-event {
-        message: option<string>
-    }
-
-    handle-event: func(event: event) -> event-result;
+interface block-registry {
+    // Returns a Block State ID by block name and property values
+    get-block-state: func(name: string, props: list<tuple<string, string>>) -> s32;
 }
 
 world plugin {
     import logging;
     export events;
+
+    import block-registry;
 
     export plugin-id: func() -> string;
     export entry: func();

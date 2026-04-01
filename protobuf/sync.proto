@@ -1,0 +1,26 @@
+syntax = "proto3";
+option java_multiple_files = true;
+
+package de.cjdev.wasm.bindings.protobuf.core.sync;
+
+message BlockProperty {
+  string name = 1;
+  string value = 2;
+  enum Type {
+    ENUM = 0;
+    INTEGER = 1;
+    BOOLEAN = 2;
+  }
+  Type type = 3;
+}
+
+message SyncBlockState {
+  int32 id = 1;
+  string name = 2;
+  repeated BlockProperty properties = 3;
+  bool is_default = 4;
+}
+
+message SyncBlockStates {
+  repeated SyncBlockState states = 1;
+}
