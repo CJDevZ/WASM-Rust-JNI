@@ -1,16 +1,16 @@
 use crate::{get_logger, LoggerImpl, Plugin, PLUGINS};
+use anyhow::Error;
 use jni::errors::ThrowRuntimeExAndDefault;
-use jni::objects::{JByteArray, JClass, JString};
+use jni::objects::{JByteArray, JClass, JObjectArray, JString};
 use jni::EnvUnowned;
+use libloading::{Library, Symbol};
 use prost::Message;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use anyhow::Error;
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
 use wasmtime::{Config, Engine, Store, WasmBacktraceDetails};
-use wasmtime_wasi::p2::add_to_linker_sync;
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 use zip::ZipArchive;
 
@@ -18,6 +18,10 @@ pub struct PluginInstance {
     pub plugin_id: String,
     pub instance: Plugin,
     pub store: Store<PluginImpl>
+}
+
+pub trait LinkerExtension {
+    fn extend(&self, linker: &mut Linker<PluginImpl>) -> anyhow::Result<()>;
 }
 
 pub struct PluginImpl {
@@ -46,16 +50,18 @@ impl WasiView for PluginImpl {
 }
 
 enum PluginType {
-    Raw(PathBuf),
-    Zipped(PathBuf),
+    File(PathBuf),
+    Folder(PathBuf),
+    Zip(PathBuf),
 }
 
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_de_cjdev_wasm_Wasm_load<'caller>(
+pub extern "system" fn Java_de_cjdev_wasm_core_WasmCore_load<'caller>(
     mut unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>,
-    plugin_folder: JString<'caller>
+    plugin_folder: JString<'caller>,
+    linker_extensions: JObjectArray<'caller, JString<'caller>>,
 ) -> JByteArray<'caller> {
     let plugin_folder = plugin_folder.to_string();
     let folder = Path::new(&plugin_folder);
@@ -72,10 +78,13 @@ pub extern "system" fn Java_de_cjdev_wasm_Wasm_load<'caller>(
     let filtered: Vec<_> = entries.filter_map(|entry| {
         let path = entry.ok()?.path();
 
+        if path.clone().is_dir() {
+            return Some(PluginType::Folder(path));
+        }
         path.clone().extension().map(|ext| {
             match ext.to_str()? {
-                "wasm" => Some(PluginType::Raw(path)),
-                "zip" => Some(PluginType::Zipped(path)),
+                "wasm" => Some(PluginType::File(path)),
+                "zip" => Some(PluginType::Zip(path)),
                 _ => None
             }
         })?
@@ -85,22 +94,33 @@ pub extern "system" fn Java_de_cjdev_wasm_Wasm_load<'caller>(
     config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
     config.wasm_threads(true);
     config.consume_fuel(true);
-    let engine = Engine::new(&config).unwrap();
+    let engine = Engine::new(&config).expect("Couldn't create engine");
 
     let logger = get_logger();
 
     let mut linker: Linker<_> = Linker::new(&engine);
     crate::example::plugin::logging::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).unwrap();
     crate::example::plugin::bindings::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).unwrap();
-    if let Err(err) = add_to_linker_sync(&mut linker) {
-        logger.error(format!("Failed to add wasi to linker: {:#?}", err));
-        return unowned_env.with_env(|env| {
-            env.byte_array_from_slice(&[])
-        }).resolve::<ThrowRuntimeExAndDefault>();
-    }
+    crate::example::plugin::block_registry::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).unwrap();
+    crate::example::plugin::level::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).unwrap();
+    crate::example::plugin::player::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).unwrap();
+    wasmtime_wasi::p2::add_to_linker_sync(&mut linker).expect("Failed to add wasi to linker");
+    //unowned_env.with_env(|env| {
+    //    let len = linker_extensions.len(env)?;
+    //    for i in 0..len {
+    //        let extension_lib = linker_extensions.get_element(env, i)?.to_string();
+    //        unsafe {
+    //            let lib = Library::new(&extension_lib)?;
+    //            let func: Symbol<unsafe extern "C" fn(&mut Linker<PluginImpl>)> =
+    //                lib.get(b"register_extension")?;
+    //            func(&mut linker);
+    //        }
+    //    }
+    //    Ok::<(), Error>(())
+    //}).into_outcome();
 
     let mut plugins: Vec<PluginInstance> = Vec::new();
-    let mut pluginData: Vec<crate::bindings::protobuf::plugin::Plugin> = Vec::new();
+    let mut pluginData: Vec<crate::bindings::protobuf::core::plugin::Plugin> = Vec::new();
 
     for path in filtered {
         let (plugin_id, instance, store, proto_data) = match load_plugin(&path, &engine, &linker) {
@@ -131,19 +151,23 @@ pub extern "system" fn Java_de_cjdev_wasm_Wasm_load<'caller>(
 
     unowned_env.with_env(|env| {
         let mut message = Vec::new();
-        crate::bindings::protobuf::plugin::PluginRegistration {
+        crate::bindings::protobuf::core::plugin::PluginRegistration {
             plugins: pluginData
         }.encode(&mut message).expect("Failed to encode PluginRegistration");
         env.byte_array_from_slice(&message)
     }).resolve::<ThrowRuntimeExAndDefault>()
 }
 
-fn load_plugin(plugin: &PluginType, engine: &Engine, linker: &Linker<PluginImpl>) -> Result<(String, Plugin, Store<PluginImpl>, crate::bindings::protobuf::plugin::Plugin), Error> {
+fn load_plugin(plugin: &PluginType, engine: &Engine, linker: &Linker<PluginImpl>) -> Result<(String, Plugin, Store<PluginImpl>, crate::bindings::protobuf::core::plugin::Plugin), Error> {
     let (wasm_bytes, data_path) = match plugin {
-        PluginType::Raw(path) => {
+        PluginType::File(path) => {
             (fs::read(&path)?, None)
         }
-        PluginType::Zipped(path) => {
+        PluginType::Folder(path) => {
+            let wasm = path.join("component.wasm");
+            (fs::read(&wasm)?, Some(path.to_str().ok_or_else(|| Error::msg("Failed getting OsStr"))?.to_string()))
+        }
+        PluginType::Zip(path) => {
             let file = File::open(path)?;
             let mut archive = ZipArchive::new(file)?;
 
@@ -151,7 +175,7 @@ fn load_plugin(plugin: &PluginType, engine: &Engine, linker: &Linker<PluginImpl>
             let mut bytes = Vec::new();
             wasm.read_to_end(&mut bytes)?;
 
-            (bytes, Some(path.to_str().unwrap().to_string()))
+            (bytes, Some(path.to_str().ok_or_else(|| Error::msg("Failed getting OsStr"))?.to_string()))
         }
     };
     let component = Component::new(&engine, &wasm_bytes)?;
@@ -163,7 +187,7 @@ fn load_plugin(plugin: &PluginType, engine: &Engine, linker: &Linker<PluginImpl>
     let instance = Plugin::instantiate(&mut store, &component, &linker)?;
     let plugin_id = load_wasm(&mut store, &instance)?;
 
-    let proto_data = crate::bindings::protobuf::plugin::Plugin {
+    let proto_data = crate::bindings::protobuf::core::plugin::Plugin {
         id: plugin_id.clone(),
         path: data_path
     };

@@ -1,42 +1,23 @@
-use crate::bindings::level::LevelHandle;
-use crate::bindings::protobuf::player::player_command::Action;
-use crate::bindings::protobuf::player::{GiveItemCommand, PlayerChange, PlayerCommand, SendMessageCommand};
-use crate::bindings::{protobuf, UNIVERSE};
-use crate::example;
-use crate::example::plugin::bindings::{BlockPos, TextComponent, Vec3};
+use crate::bindings::protobuf::core::player::player_command::Action;
+use crate::bindings::protobuf::core::player::{GiveItemCommand, PlayerChange, PlayerCommand, SendMessageCommand};
+use crate::bindings::{protobuf, Syncable, UNIVERSE};
+use crate::{api, example};
+use crate::example::plugin::bindings::TextType;
+use crate::example::plugin::level::LevelHandle;
+use crate::example::plugin::player::BlockPos;
 use crate::plugin::PluginImpl;
-use wasmtime::component::Resource;
-
-#[derive(Clone, Copy)]
-pub struct PlayerHandle(pub u64);
 
 pub struct ShadowPlayer {
     level_handle: LevelHandle,
-    position: Vec3,
+    position: example::plugin::bindings::Vec3,
     pub command_queue: Vec<PlayerCommand>,
     pub dirty: u64,
 }
 
-impl ShadowPlayer {
-    const POSITION_DIRTY: u64 = 1 << 0;
-    const COMMAND_QUEUE_DIRTY: u64 = 1 << 1;
+impl Syncable for ShadowPlayer {
+    type Change = PlayerChange;
 
-    pub fn new(level_handle: LevelHandle) -> Self {
-        Self {
-            level_handle,
-            position: Vec3 {x: 0f64, y: 0f64, z: 0f64},
-            command_queue: Vec::new(),
-            dirty: 0,
-        }
-    }
-
-    pub fn decode_changes(&mut self, change: PlayerChange) {
-        if let Some(position) = change.position {
-            self.position = Vec3 {x: position.x, y: position.y, z: position.z };
-        }
-    }
-
-    pub fn encode_changes(&mut self, universal_id: u64) -> Option<PlayerChange> {
+    fn encode_changes(&mut self, universal_id: u64) -> Option<PlayerChange> {
         (self.dirty != 0).then(|| {
             let position = (self.dirty & ShadowPlayer::POSITION_DIRTY != 0).then(|| {
                 protobuf::core::Vec3 {
@@ -46,6 +27,7 @@ impl ShadowPlayer {
                 }
             });
 
+            self.dirty = 0;
             PlayerChange {
                 universal_id,
                 position,
@@ -53,39 +35,51 @@ impl ShadowPlayer {
             }
         })
     }
+
+    fn decode_changes(&mut self, change: Self::Change) {
+        if let Some(position) = change.position {
+            self.position = example::plugin::bindings::Vec3 {x: position.x, y: position.y, z: position.z };
+        }
+    }
 }
 
-impl example::plugin::bindings::HostPlayer for PluginImpl {
-    fn get_level(&mut self, self_: Resource<PlayerHandle>) -> Resource<LevelHandle> {
-        let player_handle: &PlayerHandle = self.table.get(&self_).unwrap();
-        UNIVERSE.with_player(player_handle.0, |player| {
-            self.table.push(player.level_handle).unwrap()
-        }).unwrap()
+impl ShadowPlayer {
+    const POSITION_DIRTY: u64 = 1 << 0;
+    const COMMAND_QUEUE_DIRTY: u64 = 1 << 1;
+
+    pub fn new(level_handle: LevelHandle) -> Self {
+        Self {
+            level_handle,
+            position: example::plugin::bindings::Vec3 {x: 0f64, y: 0f64, z: 0f64},
+            command_queue: Vec::new(),
+            dirty: 0,
+        }
+    }
+}
+
+impl example::plugin::player::Host for PluginImpl {
+    fn get_level(&mut self, player: example::plugin::player::PlayerHandle) -> example::plugin::player::LevelHandle {
+        UNIVERSE.players.with(player, |player| {
+            player.level_handle
+        }).expect("Couldn't get player")
     }
 
-    fn get_block_pos(&mut self, self_: Resource<PlayerHandle>) -> BlockPos {
-        let player_handle: &PlayerHandle = self.table.get(&self_).unwrap();
-        UNIVERSE.with_player(player_handle.0, |player| {
-            BlockPos {
-                x: player.position.x.floor() as i32,
-                y: player.position.y.floor() as i32,
-                z: player.position.z.floor() as i32
-            }
-        }).unwrap()
+    fn get_block_pos(&mut self, player: example::plugin::player::PlayerHandle) -> BlockPos {
+        UNIVERSE.players.with(player, |player| {
+            api::BlockPos::xyz_to_long(
+                player.position.x.floor() as i32,
+                player.position.y.floor() as i32,
+                player.position.z.floor() as i32,
+            )
+        }).expect("Couldn't get player")
     }
 
-    fn send_message(&mut self, self_: Resource<PlayerHandle>, msg: TextComponent, action_bar: bool) -> () {
-        let player_handle: &PlayerHandle = self.table.get(&self_).unwrap();
-        let (text_type, text_message) = match msg {
-            TextComponent::Plain(text) => (protobuf::player::text_component::Type::Plain, text),
-            TextComponent::MiniMessage(text) => (protobuf::player::text_component::Type::Plain, text),
-            TextComponent::Json(text) => (protobuf::player::text_component::Type::Plain, text)
+    fn send_message(&mut self, player: example::plugin::player::PlayerHandle, message_type: TextType, message: String, action_bar: bool) -> () {
+        let text = protobuf::core::player::TextComponent {
+            message_type,
+            message: message.clone()
         };
-        let text = protobuf::player::TextComponent {
-            r#type: text_type as i32,
-            message: text_message.clone()
-        };
-        UNIVERSE.with_player_mut(player_handle.0, |player| {
+        UNIVERSE.players.with_mut(player, |player| {
             player.command_queue.push(PlayerCommand {
                 action: Some(Action::SendMessage(SendMessageCommand {
                     text: Some(text),
@@ -96,31 +90,22 @@ impl example::plugin::bindings::HostPlayer for PluginImpl {
         });
     }
 
-    fn teleport(&mut self, self_: Resource<PlayerHandle>, x: f64, y: f64, z: f64) -> () {
-        if let Ok(player_handle) = self.table.get_mut(&self_) {
-            UNIVERSE.with_player_mut(player_handle.0, |player| {
-                player.position = Vec3 { x, y, z };
-                player.dirty |= ShadowPlayer::POSITION_DIRTY;
-            });
-        }
+    fn teleport(&mut self, player: example::plugin::player::PlayerHandle, x: f64, y: f64, z: f64) -> () {
+        UNIVERSE.players.with_mut(player, |player| {
+            player.position = example::plugin::bindings::Vec3 { x, y, z };
+            player.dirty |= ShadowPlayer::POSITION_DIRTY;
+        });
     }
 
-    fn give_item(&mut self, self_: Resource<PlayerHandle>, item: String, count: i32) -> () {
-        if let Ok(player_handle) = self.table.get_mut(&self_) {
-            UNIVERSE.with_player_mut(player_handle.0, |player| {
-                player.command_queue.push(PlayerCommand {
-                    action: Some(Action::GiveItem(GiveItemCommand {
-                        item,
-                        count
-                    }))
-                });
-                player.dirty |= ShadowPlayer::COMMAND_QUEUE_DIRTY;
+    fn give_item(&mut self, player: example::plugin::player::PlayerHandle, item: String, count: i32) -> () {
+        UNIVERSE.players.with_mut(player, |player| {
+            player.command_queue.push(PlayerCommand {
+                action: Some(Action::GiveItem(GiveItemCommand {
+                    item,
+                    count
+                }))
             });
-        }
-    }
-
-    fn drop(&mut self, rep: Resource<PlayerHandle>) -> wasmtime::Result<()> {
-        self.table.delete(rep)?;
-        Ok(())
+            player.dirty |= ShadowPlayer::COMMAND_QUEUE_DIRTY;
+        });
     }
 }
