@@ -1,0 +1,72 @@
+package example:plugin;
+
+interface logging {
+    info: func(msg: string);
+    warn: func(msg: string);
+    error: func(msg: string);
+}
+
+interface level {
+    type level-handle = u64;
+    type block-pos = u64;
+
+    set-block: func(level: level-handle, position: block-pos, block: s32);
+}
+
+interface player {
+    use bindings.{text-type};
+    use level.{level-handle, block-pos};
+    type player-handle = u64;
+
+    get-username: func(player: player-handle) -> string;
+    get-uuid: func(player: player-handle) -> string;
+    get-level: func(player: player-handle) -> level-handle;
+    get-block-pos: func(player: player-handle) -> block-pos;
+    send-message: func(player: player-handle, message-type: text-type, message: string, action-bar: bool);
+    teleport: func(player: player-handle, x: f64, y: f64, z: f64);
+    give-item: func(player: player-handle, item: string, count: s32);
+    custom-command: func(player: player-handle, command: s32, message: list<u8>);
+    get-custom-command-id: func(name: string) -> s32;
+}
+
+interface commands {
+    type function-handle = u64;
+
+    register-command: func(command: string, function-handle: function-handle);
+}
+
+interface bindings {
+    record vec3 {
+        x: f64,
+        y: f64,
+        z: f64
+    }
+
+    type text-type = s32;
+}
+
+interface events {
+    get-event-id: func(name: string) -> u32;
+}
+
+interface block-registry {
+    // Returns a Block State ID by block name and property values
+    get-block-state: func(name: string, props: list<tuple<string, string>>) -> s32;
+}
+
+world plugin {
+    use player.{player-handle};
+
+    type event-type = u32;
+    type event-result = s32;
+
+    import logging;
+    import events;
+
+    import block-registry;
+    import commands;
+
+    export plugin-id: func() -> string;
+    export entry: func();
+    export handle-event: func(event-type: event-type, message: list<u8>) -> event-result;
+}
