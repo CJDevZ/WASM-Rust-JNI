@@ -126,6 +126,7 @@ pub extern "system" fn Java_eu_cj4_wasm_core_WasmCore_load<'caller>(
     let logger = get_logger();
 
     let mut linker: Linker<_> = Linker::new(&engine);
+    // TODO: Make sure to add all the imports to the linker <3
     crate::example::plugin::logging::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).expect("Failed to add 'example::plugin::logging' to Linker");
     crate::example::plugin::bindings::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).expect("Failed to add 'example::plugin::bindings' to Linker");
     crate::example::plugin::block_registry::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).expect("Failed to add 'example::plugin::block_registry' to Linker");
