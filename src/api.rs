@@ -6,21 +6,24 @@ pub struct BlockPos {
 }
 
 impl BlockPos {
-    pub fn from_long(packed: u64) -> BlockPos {
+    pub const fn from_u64(packed: u64) -> BlockPos {
         BlockPos {
-            x: (packed >> 38) as i32,
-            y: (packed & 0xFFF) as i32,
-            z: ((packed >> 12) & 0x3FFFFFF) as i32,
+            x: ((packed >> 32) as i32) >> 6,
+            y: ((packed << 20) as i32) >> 20,
+            z: ((packed >> 6) as i32) >> 6,
         }
     }
 
-    pub fn to_long(&self) -> crate::example::plugin::level::BlockPos {
-        Self::xyz_to_long(self.x, self.y, self.z)
+    pub const fn to_u64(self) -> crate::example::plugin::level::BlockPos {
+        Self::xyz_to_u64(self.x, self.y, self.z)
     }
 
-    #[inline(always)]
-    pub fn xyz_to_long(x: i32, y: i32, z: i32) -> crate::example::plugin::level::BlockPos {
-        (((x as u64 & 0x3FFFFFF) << 38) | ((z as u64 & 0x3FFFFFF) << 12) | y as u64 & 0xFFF) as crate::example::plugin::level::BlockPos
+    pub const fn xyz_to_u64(x: i32, y: i32, z: i32) -> crate::example::plugin::level::BlockPos {
+        (
+            (((x & 0x3FFFFFF) as u64) << 38)
+                | (((z & 0x3FFFFFF) as u64) << 12)
+                | (y & 0xFFF) as u64
+        ) as crate::example::plugin::level::BlockPos
     }
 }
 
@@ -33,7 +36,7 @@ pub mod text {
 }
 
 pub mod event {
-    use crate::exports::example::plugin::events::{EventResult, EventType};
+    use crate::{EventResult, EventType};
 
     pub const PLAYER_JOIN: EventType = 1;
     pub const PLAYER_LEAVE: EventType = 2;
@@ -44,5 +47,5 @@ pub mod event {
 
     pub const RESULT_DEFAULT: EventResult = 0;
     pub const RESULT_ALLOW: EventResult = 1;
-    pub const RESULT_DENY: EventResult = 2;
+    pub const RESULT_DENY: EventResult = -1;
 }

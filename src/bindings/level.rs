@@ -1,6 +1,7 @@
 use crate::bindings::protobuf::core::{BlockUpdate, LevelChange};
 use crate::bindings::{Syncable, UNIVERSE};
 use crate::example::plugin::level::BlockPos;
+use crate::get_logger;
 use crate::plugin::PluginImpl;
 
 pub struct ShadowLevel {

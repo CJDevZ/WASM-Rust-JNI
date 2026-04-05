@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::{get_logger, LoggerImpl, Plugin, PLUGINS};
 use anyhow::Error;
 use jni::errors::ThrowRuntimeExAndDefault;
@@ -57,24 +58,50 @@ enum PluginType {
 
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_de_cjdev_wasm_core_WasmCore_load<'caller>(
+pub extern "system" fn Java_eu_cj4_wasm_core_WasmCore_load<'caller>(
     mut unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>,
     plugin_folder: JString<'caller>,
+    event_types: JObjectArray<'caller, JString<'caller>>,
+    custom_player_commands: JObjectArray<'caller, JString<'caller>>,
     linker_extensions: JObjectArray<'caller, JString<'caller>>,
 ) -> JByteArray<'caller> {
+
+    // EVENTS
+    let (events, custom_player_commands) = unowned_env.with_env(|env| {
+        let mut events: HashMap<String, u32> = HashMap::new();
+        let len = event_types.len(env)?;
+        for i in 0..len {
+            let event_type = event_types.get_element(env, i)?.to_string();
+            events.insert(event_type, (i + 1) as u32);
+        }
+
+        // CUSTOM PLAYER COMMANDS
+        let mut map: HashMap<String, i32> = HashMap::new();
+        let len = custom_player_commands.len(env)?;
+        for i in 0..len {
+            let event_type = custom_player_commands.get_element(env, i)?.to_string();
+            map.insert(event_type, i as i32);
+        }
+        Ok::<_, jni::errors::Error>((events, map))
+    }).resolve::<ThrowRuntimeExAndDefault>();
+    get_logger().info(format!("{:?}", custom_player_commands));
+
+    crate::event::EVENT_NAMES.set(events).expect("EVENT_NAMES already initialized");
+    crate::event::CUSTOM_PLAYER_COMMANDS.set(custom_player_commands).expect("CUSTOM_PLAYER_COMMANDS already initialized");
+
+
+    // PLUGINS
     let plugin_folder = plugin_folder.to_string();
     let folder = Path::new(&plugin_folder);
     if !folder.exists() {
-        let logger = get_logger();
-        logger.info("Creating plugin folder");
         get_logger().info("Creating plugin folder");
-        fs::create_dir_all(folder).ok();
+        fs::create_dir_all(folder).expect("Failed to create plugin folder");
         return unowned_env.with_env(|env| {
             env.byte_array_from_slice(&[])
         }).resolve::<ThrowRuntimeExAndDefault>();
     }
-    let entries = fs::read_dir(folder).unwrap();
+    let entries = fs::read_dir(folder).expect("Failed to read plugin folder");
     let filtered: Vec<_> = entries.filter_map(|entry| {
         let path = entry.ok()?.path();
 
@@ -99,12 +126,14 @@ pub extern "system" fn Java_de_cjdev_wasm_core_WasmCore_load<'caller>(
     let logger = get_logger();
 
     let mut linker: Linker<_> = Linker::new(&engine);
-    crate::example::plugin::logging::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).unwrap();
-    crate::example::plugin::bindings::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).unwrap();
-    crate::example::plugin::block_registry::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).unwrap();
-    crate::example::plugin::level::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).unwrap();
-    crate::example::plugin::player::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).unwrap();
-    wasmtime_wasi::p2::add_to_linker_sync(&mut linker).expect("Failed to add wasi to linker");
+    crate::example::plugin::logging::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).expect("Failed to add 'example::plugin::logging' to Linker");
+    crate::example::plugin::bindings::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).expect("Failed to add 'example::plugin::bindings' to Linker");
+    crate::example::plugin::block_registry::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).expect("Failed to add 'example::plugin::block_registry' to Linker");
+    crate::example::plugin::level::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).expect("Failed to add 'example::plugin::level' to Linker");
+    crate::example::plugin::player::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).expect("Failed to add 'example::plugin::player' to Linker");
+    crate::example::plugin::commands::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).expect("Failed to add 'example::plugin::commands' to Linker");
+    crate::example::plugin::events::add_to_linker::<PluginImpl, HasSelf<_>>(&mut linker, |state: &mut PluginImpl| state).expect("Failed to add 'example::plugin::events' to Linker");
+    wasmtime_wasi::p2::add_to_linker_sync(&mut linker).expect("Failed to add wasi to Linker");
     //unowned_env.with_env(|env| {
     //    let len = linker_extensions.len(env)?;
     //    for i in 0..len {

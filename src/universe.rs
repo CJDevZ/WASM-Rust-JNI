@@ -1,16 +1,16 @@
+use crate::bindings::level::ShadowLevel;
 use crate::bindings::player::ShadowPlayer;
 use crate::bindings::protobuf::core::UniverseChanges;
 use crate::bindings::{Syncable, UNIVERSE};
+use crate::example::plugin::level::LevelHandle;
+use crate::PLUGINS;
 use jni::errors::{Error, ThrowRuntimeExAndDefault};
-use jni::objects::{JByteArray, JClass};
-use jni::sys::jlong;
+use jni::objects::{JByteArray, JClass, JString};
+use jni::sys::{jdouble, jlong};
 use jni::EnvUnowned;
 use prost::Message;
 use slotmap::{DefaultKey, Key, KeyData, SlotMap};
 use std::sync::RwLock;
-use crate::bindings::level::ShadowLevel;
-use crate::example::plugin::level::LevelHandle;
-use crate::PLUGINS;
 
 pub struct Universe {
     pub players: UniverseStorage<ShadowPlayer>,
@@ -39,7 +39,7 @@ impl <T: Syncable> UniverseStorage<T> {
     }
 
     pub fn add(&self, value: T) -> u64 {
-        let mut map = self.map.write().ok().unwrap();
+        let mut map = self.map.write().ok().expect("Failed to lock UniverseStorage");
         map.insert(value).data().as_ffi()
     }
 
@@ -50,7 +50,7 @@ impl <T: Syncable> UniverseStorage<T> {
     }
 
     fn flush_all(&self) -> Vec<T::Change> {
-        let mut map = self.map.write().unwrap();
+        let mut map = self.map.write().expect("Failed to lock UniverseStorage");
         map.iter_mut()
             .filter_map(|(uid, entity)| entity.encode_changes(uid.data().as_ffi()))
             .collect()
@@ -68,17 +68,24 @@ impl Universe {
 
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_de_cjdev_wasm_core_Universe_add_1player<'caller>(
+pub extern "system" fn Java_eu_cj4_wasm_core_Universe_add_1player<'caller>(
     _unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>,
-    level_handle: jlong
+    username: JString<'caller>,
+    uuid_m: jlong,
+    uuid_l: jlong,
+    level_handle: jlong,
+    x: jdouble,
+    y: jdouble,
+    z: jdouble,
 ) -> jlong {
-    UNIVERSE.players.add(ShadowPlayer::new(level_handle as LevelHandle)) as jlong
+    let player = ShadowPlayer::new(username.to_string(), uuid_m as u64, uuid_l as u64, level_handle as LevelHandle, x, y, z);
+    UNIVERSE.players.add(player) as jlong
 }
 
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_de_cjdev_wasm_core_Universe_remove_1player<'caller>(
+pub extern "system" fn Java_eu_cj4_wasm_core_Universe_remove_1player<'caller>(
     _unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>,
     universal_id: jlong
@@ -88,7 +95,7 @@ pub extern "system" fn Java_de_cjdev_wasm_core_Universe_remove_1player<'caller>(
 
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_de_cjdev_wasm_core_Universe_add_1level<'caller>(
+pub extern "system" fn Java_eu_cj4_wasm_core_Universe_add_1level<'caller>(
     _unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>
 ) -> jlong {
@@ -97,12 +104,12 @@ pub extern "system" fn Java_de_cjdev_wasm_core_Universe_add_1level<'caller>(
 
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_de_cjdev_wasm_core_Universe_push_1changes<'caller>(
+pub extern "system" fn Java_eu_cj4_wasm_core_Universe_push_1changes<'caller>(
     mut unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>,
     message: JByteArray<'caller>
 ) {
-    let mut plugins = PLUGINS.lock().unwrap();
+    let mut plugins = PLUGINS.lock().expect("Failed to lock PLUGINS");
     for plugin in plugins.iter_mut() {
         plugin.store.set_fuel(unsafe{crate::bindings::FUEL_CAP}).expect("Failed to set fuel capacity");
     }
@@ -122,7 +129,7 @@ pub extern "system" fn Java_de_cjdev_wasm_core_Universe_push_1changes<'caller>(
 
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_de_cjdev_wasm_core_Universe_fetch_1changes<'caller>(
+pub extern "system" fn Java_eu_cj4_wasm_core_Universe_fetch_1changes<'caller>(
     mut unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>
 ) -> JByteArray<'caller> {

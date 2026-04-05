@@ -15,7 +15,7 @@ use std::sync::{Mutex, OnceLock};
 use wasmtime::component::bindgen;
 
 bindgen!({
-    path: "wit/api.wit",
+    path: "wit/api28.wit",
     world: "plugin",
     with: {
         //"example:plugin/bindings.player": bindings::player::PlayerHandle,
@@ -47,8 +47,7 @@ pub unsafe extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::ffi::c_void) -
 }
 
 pub fn panic_handler(panic_info: &panic::PanicHookInfo) {
-    let logger = LOGGER.get().unwrap();
-    logger.error(panic_info.to_string())
+    get_logger().error(panic_info.to_string())
 }
 
 #[cfg(test)]

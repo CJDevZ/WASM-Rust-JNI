@@ -101,7 +101,7 @@ static BLOCK_STATE_REGISTRY: OnceLock<BlockStateRegistry> = OnceLock::new();
 
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_de_cjdev_wasm_core_Universe_sync_1block_1states<'caller>(
+pub extern "system" fn Java_eu_cj4_wasm_core_Universe_sync_1block_1states<'caller>(
     mut unowned_env: EnvUnowned<'caller>,
     _class: JClass<'caller>,
     message: JByteArray<'caller>,

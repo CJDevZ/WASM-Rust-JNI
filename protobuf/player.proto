@@ -1,7 +1,7 @@
 syntax = "proto3";
 option java_multiple_files = true;
 
-package de.cjdev.wasm.bindings.protobuf.core.player;
+package eu.cj4.wasm.bindings.protobuf.core.player;
 import "core.proto";
 import "google/protobuf/any.proto";
 
@@ -20,10 +20,16 @@ message GiveItemCommand {
   int32 count = 2;
 }
 
+message CustomCommand {
+  int32 command = 1;
+  bytes message = 2;
+}
+
 message PlayerCommand {
   oneof action {
     GiveItemCommand give_item = 1;
     SendMessageCommand send_message = 2;
+    CustomCommand custom_command = 3;
   }
 }
 
