@@ -1,14 +1,16 @@
 use crate::bindings::protobuf::core::player::player_command::Action;
-use crate::bindings::protobuf::core::player::{GiveItemCommand, PlayerChange, PlayerCommand, SendMessageCommand};
+use crate::bindings::protobuf::core::player::{GiveItemCommand, PlayerChange, PlayerCommand, SendMessageCommand, CustomCommand};
 use crate::bindings::{protobuf, Syncable, UNIVERSE};
-use crate::{api, example};
+use crate::{api, example, get_logger};
 use crate::example::plugin::bindings::TextType;
 use crate::example::plugin::level::LevelHandle;
-use crate::example::plugin::player::BlockPos;
+use crate::example::plugin::player::{BlockPos, PlayerHandle};
 use crate::plugin::PluginImpl;
 
 pub struct ShadowPlayer {
     level_handle: LevelHandle,
+    username: String,
+    uuid: i128,
     position: example::plugin::bindings::Vec3,
     pub command_queue: Vec<PlayerCommand>,
     pub dirty: u64,
@@ -47,10 +49,12 @@ impl ShadowPlayer {
     const POSITION_DIRTY: u64 = 1 << 0;
     const COMMAND_QUEUE_DIRTY: u64 = 1 << 1;
 
-    pub fn new(level_handle: LevelHandle) -> Self {
+    pub fn new(username: String, uuid_m: u64, uuid_l: u64, level_handle: LevelHandle, x: f64, y: f64, z: f64) -> Self {
         Self {
+            username,
             level_handle,
-            position: example::plugin::bindings::Vec3 {x: 0f64, y: 0f64, z: 0f64},
+            uuid: ((uuid_m as i128) << 64) | uuid_l as i128,
+            position: example::plugin::bindings::Vec3 {x, y, z},
             command_queue: Vec::new(),
             dirty: 0,
         }
@@ -58,15 +62,25 @@ impl ShadowPlayer {
 }
 
 impl example::plugin::player::Host for PluginImpl {
-    fn get_level(&mut self, player: example::plugin::player::PlayerHandle) -> example::plugin::player::LevelHandle {
+    fn get_username(&mut self, player: PlayerHandle) -> String {
+        UNIVERSE.players.with(player, |player| player.username.clone()).expect("Couldn't get player")
+    }
+
+    fn get_uuid(&mut self, player: PlayerHandle) -> String {
+        UNIVERSE.players.with(player, |player| {
+            player.uuid.to_le_bytes().iter().map(|&b| b as char).collect()
+        }).expect("Couldn't get player")
+    }
+
+    fn get_level(&mut self, player: PlayerHandle) -> example::plugin::player::LevelHandle {
         UNIVERSE.players.with(player, |player| {
             player.level_handle
         }).expect("Couldn't get player")
     }
 
-    fn get_block_pos(&mut self, player: example::plugin::player::PlayerHandle) -> BlockPos {
+    fn get_block_pos(&mut self, player: PlayerHandle) -> BlockPos {
         UNIVERSE.players.with(player, |player| {
-            api::BlockPos::xyz_to_long(
+            api::BlockPos::xyz_to_u64(
                 player.position.x.floor() as i32,
                 player.position.y.floor() as i32,
                 player.position.z.floor() as i32,
@@ -74,7 +88,7 @@ impl example::plugin::player::Host for PluginImpl {
         }).expect("Couldn't get player")
     }
 
-    fn send_message(&mut self, player: example::plugin::player::PlayerHandle, message_type: TextType, message: String, action_bar: bool) -> () {
+    fn send_message(&mut self, player: PlayerHandle, message_type: TextType, message: String, action_bar: bool) -> () {
         let text = protobuf::core::player::TextComponent {
             message_type,
             message: message.clone()
@@ -90,14 +104,14 @@ impl example::plugin::player::Host for PluginImpl {
         });
     }
 
-    fn teleport(&mut self, player: example::plugin::player::PlayerHandle, x: f64, y: f64, z: f64) -> () {
+    fn teleport(&mut self, player: PlayerHandle, x: f64, y: f64, z: f64) -> () {
         UNIVERSE.players.with_mut(player, |player| {
             player.position = example::plugin::bindings::Vec3 { x, y, z };
             player.dirty |= ShadowPlayer::POSITION_DIRTY;
         });
     }
 
-    fn give_item(&mut self, player: example::plugin::player::PlayerHandle, item: String, count: i32) -> () {
+    fn give_item(&mut self, player: PlayerHandle, item: String, count: i32) -> () {
         UNIVERSE.players.with_mut(player, |player| {
             player.command_queue.push(PlayerCommand {
                 action: Some(Action::GiveItem(GiveItemCommand {
@@ -107,5 +121,21 @@ impl example::plugin::player::Host for PluginImpl {
             });
             player.dirty |= ShadowPlayer::COMMAND_QUEUE_DIRTY;
         });
+    }
+
+    fn custom_command(&mut self, player: PlayerHandle, command: i32, message: Vec<u8>) -> () {
+        UNIVERSE.players.with_mut(player, |player| {
+            player.command_queue.push(PlayerCommand {
+                action: Some(Action::CustomCommand(CustomCommand {
+                    command,
+                    message
+                }))
+            });
+            player.dirty |= ShadowPlayer::COMMAND_QUEUE_DIRTY;
+        });
+    }
+
+    fn get_custom_command_id(&mut self, name: String) -> i32 {
+        crate::event::CUSTOM_PLAYER_COMMANDS.get().expect("EVENT_NAMES uninitialized").get(&name).cloned().unwrap_or(-1)
     }
 }

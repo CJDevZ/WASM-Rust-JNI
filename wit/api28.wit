@@ -18,11 +18,21 @@ interface player {
     use level.{level-handle, block-pos};
     type player-handle = u64;
 
+    get-username: func(player: player-handle) -> string;
+    get-uuid: func(player: player-handle) -> string;
     get-level: func(player: player-handle) -> level-handle;
     get-block-pos: func(player: player-handle) -> block-pos;
     send-message: func(player: player-handle, message-type: text-type, message: string, action-bar: bool);
     teleport: func(player: player-handle, x: f64, y: f64, z: f64);
     give-item: func(player: player-handle, item: string, count: s32);
+    custom-command: func(player: player-handle, command: s32, message: list<u8>);
+    get-custom-command-id: func(name: string) -> s32;
+}
+
+interface commands {
+    type function-handle = u64;
+
+    register-command: func(command: string, function-handle: function-handle);
 }
 
 interface bindings {
@@ -36,12 +46,7 @@ interface bindings {
 }
 
 interface events {
-    use player.{player-handle};
-
-    type event-type = u32;
-    type event-result = s32;
-
-    handle-event: func(event-type: event-type, args: list<u64>) -> event-result;
+    get-event-id: func(name: string) -> u32;
 }
 
 interface block-registry {
@@ -50,11 +55,18 @@ interface block-registry {
 }
 
 world plugin {
+    use player.{player-handle};
+
+    type event-type = u32;
+    type event-result = s32;
+
     import logging;
-    export events;
+    import events;
 
     import block-registry;
+    import commands;
 
     export plugin-id: func() -> string;
     export entry: func();
+    export handle-event: func(event-type: event-type, message: list<u8>) -> event-result;
 }
